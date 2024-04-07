@@ -85,6 +85,8 @@ class Trainer:
             self.optimizer, step_size=10, gamma=0.75)
         self.record_train = []
         self.record_test = []
+        self.trainloss_record = []
+        self.validationloss_record = []
 
     @staticmethod
     def compute_mean_std(filepath):
@@ -142,6 +144,7 @@ class Trainer:
             if self.val_iter is not None:
                 self.record_test.append(self.validate())
             self.record_train.append(train_acc)
+            self.trainloss_record.append(train_loss/total)
             torch.save(self.net.state_dict(
             ), os.path.join(self.config['weight_path'],
                             f"1DCNN_AND_LSTM_modelTrainer_{epoch + 1}_acc={self.record_test[epoch]:.3f}.pt"))
@@ -150,7 +153,7 @@ class Trainer:
                    os.path.join(self.config['weight_path'], f"1DCNN_AND_LSTM__modelTrainer_full.pt"))
 
     def validate(self):
-        total, correct = 0, 0
+        total, correct, val_loss = 0, 0, 0
         self.net.eval()
         labels = [0, 1]
         class_names = ['no_up_trend', 'up_trend']
@@ -166,6 +169,8 @@ class Trainer:
                 _, preds = torch.max(output, 1)
                 loss = self.criterion(output, y)
 
+                val_loss += loss.item()
+
                 probs = F.softmax(output, dim=1)[:, 1]  # 取得屬於類別1的機率
                 all_labels.extend(y.cpu().numpy())
                 all_probs.extend(probs.cpu().numpy())
@@ -174,6 +179,7 @@ class Trainer:
                 total += y.size(0)
                 correct += (preds == y).sum().item()
 
+            self.validationloss_record.append(val_loss/total)
             val_acc = 100.0 * correct / total
             print(f"validation loss: {loss.item():.3f} | validation accuracy: {val_acc:6.3f}%")
 
@@ -222,14 +228,33 @@ class Trainer:
         plt.savefig(learning_curve_plt_path)
         plt.close()
 
+    def loss_curve(self):
+        plt.style.use("ggplot")
+        plt.plot(range(1, len(self.trainloss_record) + 1),
+                 self.trainloss_record, label="Training Loss")
+        if self.validationloss_record:
+            plt.plot(range(1, len(self.validationloss_record) + 1),
+                     self.validationloss_record, label="Validation Loss")
+        plt.legend(loc=4)
+        plt.title("Loss Curve")
+        plt.xticks(range(0, len(self.trainloss_record) + 1, 5))
+        plt.yticks(range(0, 5, 1))
+        plt.xlabel("Nums of Epoch")
+        plt.ylabel("Loss")
+
+        # 保存損失曲線圖像
+        loss_curve_plt_path = os.path.join(self.config['weight_path'], 'loss_curve.png')
+        plt.savefig(loss_curve_plt_path)
+        plt.close()
+
 
 def main():
     config = {
-        'train_data_path': "你的訓練集路徑",
-        'val_data_path': "你的驗證集路徑",
-        'weight_path': "訓練玩模型的儲存路徑",
-        'batch_size': 4,
-        'num_epochs': 300,
+        'train_data_path': r"C:\Users\oscar\Desktop\Taylor's Job\data_for_dad.csv",
+        'val_data_path': r"C:\Users\oscar\Desktop\Taylor's Job\data_for_dad.csv",
+        'weight_path': r"C:\Users\oscar\Desktop\Taylor's Job",
+        'batch_size': 20,
+        'num_epochs': 2,
         'learning_rate': 0.000125,
         'momentum': 0.9,
         'weight_decay': 0.0005,
@@ -240,6 +265,7 @@ def main():
     start_time = time.time()
     trainer.train()
     trainer.learning_curve()
+    trainer.loss_curve()
     end_time = time.time()
     total_time = end_time - start_time
 
